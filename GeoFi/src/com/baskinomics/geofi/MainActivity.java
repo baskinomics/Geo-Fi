@@ -1,6 +1,7 @@
 /**
 * @TODO Provide description.
 */
+
 package com.baskinomics.geofi;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -11,6 +12,9 @@ import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 
 import android.app.Activity;
 import android.app.Dialog;
@@ -51,22 +55,20 @@ public class MainActivity extends Activity implements
     GooglePlayServicesClient.ConnectionCallbacks, 
     GooglePlayServicesClient.OnConnectionFailedListener {
 
+    // Maps and Location
     private GoogleMap mGoogleMap;
-    private final static int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
-
-    // A request to connect to Location Services
     private LocationRequest mLocationRequest;
-    // Stores the current instantiation of the location client in this object
     private LocationClient mLocationClient;
-    protected Location mCurrentLocation;
-    private static double mCurrentLatitude;
-    private static double mCurrentLongitude;
+    private Location mCurrentLocation;
+    private double mCurrentLatitude;
+    private double mCurrentLongitude;
     private float mCurrentBearing;
     private double mCurrentAltitude;
     private float mCurrentSpeed;
     private long mCurrentUtcTime;
     private float mCurrentAccuracy;
     private String mCurrentProvider;
+    public boolean mUpdatesRequested = false;
 
     // WiFi Attributes
     private WifiManager wifiManager;
@@ -77,18 +79,27 @@ public class MainActivity extends Activity implements
     private String mCurrentSSID;
     private int mCurrentRSSI;
 
-    // File Output
+    // Data structure to store information
     private ArrayList<DataRecord> dataRecords = new ArrayList<DataRecord>();
 
+    // Constants
     private static final String TAG = "GeoFi";
+    private static final int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
+
+    // UI 
+    private boolean inPlayState = false;
+    private boolean inStopState = false;
+    private boolean inWriteState = false;
 
     /*
-     * Note if updates have been turned on. Starts out as "false"; is set to "true" in the
-     * method handleRequestSuccess of LocationUpdateReceiver.
-     *
-     */
-    boolean mUpdatesRequested = false;
+    * Activity lifecycle callbacks
+    */
 
+    /**
+    * @TODO Add description.
+    * 
+    * @param savedInstanceState
+    */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -108,10 +119,7 @@ public class MainActivity extends Activity implements
         mLocationRequest.setFastestInterval(LocationUtils.FAST_INTERVAL_CEILING_IN_MILLISECONDS);
         // Note that location updates are off until the user turns them on
         mUpdatesRequested = true;
-        /*
-         * Create a new location client, using the enclosing class to
-         * handle callbacks.
-         */
+        // Create a new location client, using the enclosing class to handle callbacks.
         mLocationClient = new LocationClient(this, this, this);
 
         wifiManager = (WifiManager) getBaseContext()
@@ -119,7 +127,7 @@ public class MainActivity extends Activity implements
     }
 
     /**
-    *
+    * @TODO Add description.
     */
     @Override
     protected void onStart() {
@@ -129,7 +137,23 @@ public class MainActivity extends Activity implements
     }
 
     /**
-    *
+    * @TODO Add description.
+    */
+    @Override
+    protected void onResume() {
+        super.onResume();
+    }
+
+    /**
+    * @TODO Add description.
+    */
+    @Override
+    protected void onPause() {
+        super.onPause();
+    }
+
+    /**
+    * @TODO Add description.
     */
     @Override
     protected void onStop() {
@@ -142,6 +166,15 @@ public class MainActivity extends Activity implements
         super.onStop();
     }
 
+    /*
+    * ActionBar Menu
+    */
+
+    /**
+    * @TODO Add description.
+    *
+    * @param menu
+    */
     @Override
 	public boolean onCreateOptionsMenu(Menu menu) {
     	// Inflate the menu items for use in the action bar
@@ -150,25 +183,88 @@ public class MainActivity extends Activity implements
     	return super.onCreateOptionsMenu(menu);
 	}
 
+    /**
+    * @TODO Add description.
+    *
+    * @param item
+    */
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handles presses on the action bar items
         switch (item.getItemId()) {
 
             case R.id.action_start:
-                mLocationClient.requestLocationUpdates(mLocationRequest, this);
-                Log.i(TAG, "Start button was pressed.");
+                if (inPlayState == false && inStopState == false && inWriteState == false) {
+                /**
+                 * Represents the inital state of the application.
+                 */
+                    mLocationClient.requestLocationUpdates(mLocationRequest, this);
+                    inPlayState = true;
+                    Toast.makeText(this, "Beginning new data set!", Toast.LENGTH_LONG).show();
+                } else if (inPlayState == false && inStopState == true && inWriteState == false) {
+                /**
+                 * Represents the state change from a user pausing and then continuing to record.
+                 */
+                    mLocationClient.requestLocationUpdates(mLocationRequest, this);
+                    inPlayState = true;
+                    inStopState = false;
+                    Toast.makeText(this, "Continuing collection of records for current data set!", Toast.LENGTH_LONG).show();
+                } else if (inPlayState == false && inStopState == false && inWriteState == true) {
+                /**
+                 * Represents the state change from writing to a data file and starting a new set of data.
+                 */
+                    mLocationClient.requestLocationUpdates(mLocationRequest, this);
+                    inPlayState = true;
+                    inWriteState = false;
+                    Toast.makeText(this, "Beginning new data set!", Toast.LENGTH_LONG).show();
+                } else {
+                /**
+                 * Represents pressing the play button while already in the recording state.
+                 */
+                    Toast.makeText(this, "Already recording data!", Toast.LENGTH_LONG).show();
+                }
                 return true;
 
             case R.id.action_stop:
-                if (mLocationClient.isConnected())
-                    mLocationClient.removeLocationUpdates(this);
+                if (inPlayState == false && inStopState == false && inWriteState == false) {
+                /**
+                 * Represents a user pressing the pause button in the application's initial state.
+                 */
+                } else if (inPlayState == false && inStopState == false && inWriteState == true) {
+                /**
+                 * Represents an illegal transition from the write state to the pause state.
+                 */
+                    Toast.makeText(this, "No data is currently being recorded", Toast.LENGTH_LONG).show();
+                } else {
+                /**
+                 * Represents an illegal transition from the write state to the pause state.
+                 */
+                    if (mLocationClient.isConnected())
+                        mLocationClient.removeLocationUpdates(this);
+                    inPlayState = false;
+                    inStopState = true;
+                }
+
                 Log.i(TAG, "Stop button was pressed.");
                 return true;
 
             case R.id.action_write:
-                Log.i(TAG, "Write button was pressed.");
-                writeDataRecordsToFile();
+                if (inPlayState == false && inStopState == false && inWriteState == false) {
+                /**
+                 * Represents a user pressing the write button in the application's initial state.
+                 */
+                    Toast.makeText(this, "To begin recording data, press the \"Play\" button", Toast.LENGTH_LONG).show();
+                } else if (inPlayState == true && inStopState == false && inWriteState == false) {
+                /**
+                 * Represents an illegal transition from the write state to the pause state.
+                 */
+                    Toast.makeText(this, "Press \"Pause\" button before recording data.", Toast.LENGTH_LONG).show();
+                } else {
+                    writeDataRecordsToFile();
+                    inPlayState = false;
+                    inStopState = false;
+                    inWriteState = true;
+                }
                 return true;
 
             default:
@@ -176,7 +272,7 @@ public class MainActivity extends Activity implements
         }
     }
 
-/*
+    /*
      * Handle results returned to this Activity by other Activities started with
      * startActivityForResult(). In particular, the method onConnectionFailed() in
      * LocationUpdateRemover and LocationUpdateRequester may call startResolutionForResult() to
@@ -253,7 +349,7 @@ public class MainActivity extends Activity implements
      */
     @Override
     public void onConnected(Bundle bundle) {
-        // mLocationClient.requestLocationUpdates(mLocationRequest, this);
+        
     }
 
     /*
@@ -314,7 +410,9 @@ public class MainActivity extends Activity implements
         DataRecord dataRecord = new DataRecord();
         dataRecord.setLocationAttributes(mCurrentLatitude, mCurrentLongitude, mCurrentBearing, mCurrentAltitude, mCurrentSpeed, mCurrentAccuracy, mCurrentProvider, mCurrentUtcTime);
         dataRecord.setWifiAttributes(mCurrentIpAddress, mCurrentLinkSpeed, mCurrentMacAddress, mCurrentSSID, mCurrentRSSI);
+        // mGoogleMap.addMarker(new MarkerOptions().position(new LatLng(dataRecord.getLat(), dataRecord.getLon())).title("Hello!"));  
         dataRecords.add(dataRecord);
+
         // Debugging
         String latitudeRecord = Double.toString(dataRecord.getLat());
         String longitudeRecord = Double.toString(dataRecord.getLon());
